@@ -36,7 +36,7 @@ def check_password():
 
 # --- FUNCIONES DE BASE DE DATOS (Apps Script) ---
 # PEGA AQUÍ TU ENLACE DE APPS SCRIPT
-URL_WEB_APP = "https://script.google.com/macros/s/AKfycbxADLB-tc2T3fQNoUtgHXlwVIYnM7WkWBBYagAFxtFHDNJFd-Wy2RNJq-O0MART7QyS/exec"
+URL_WEB_APP = "https://script.google.com/macros/s/AKfycbx9lOCIm2IZNuDeLl8xmBL8QSR5sekd12Ngx3cELrNvYYefhuVJN6VhgBdezNcfiijo/exec"
 
 def estructurar_datos_para_guardar():
     filas = []
