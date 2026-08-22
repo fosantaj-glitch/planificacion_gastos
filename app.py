@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
+import requests
+import json
+import time
 
 # Configuración de la página
 st.set_page_config(page_title="Control de Gastos", layout="wide")
@@ -8,13 +11,11 @@ st.set_page_config(page_title="Control de Gastos", layout="wide")
 # --- SISTEMA DE LOGIN ---
 def check_password():
     def password_entered():
-        # Comprueba si el usuario existe y la contraseña coincide
         if st.session_state["username"] in st.secrets["passwords"] and \
            st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
             st.session_state["password_correct"] = True
-            # Guardamos el usuario de forma permanente antes de que se borre el widget
             st.session_state["usuario_actual"] = st.session_state["username"] 
-            del st.session_state["password"]  # Elimina la contraseña por seguridad
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
@@ -33,59 +34,91 @@ def check_password():
         return False
     return True
 
+# --- FUNCIONES DE BASE DE DATOS (Apps Script) ---
+# PEGA AQUÍ TU ENLACE DE APPS SCRIPT
+URL_WEB_APP = "https://script.google.com/macros/s/AKfycbxADLB-tc2T3fQNoUtgHXlwVIYnM7WkWBBYagAFxtFHDNJFd-Wy2RNJq-O0MART7QyS/exec"
+
+def estructurar_datos_para_guardar():
+    """Consolida todas las tablas de memoria en un solo formato para Google Sheets"""
+    filas = []
+    # 1. Guardar Ingresos
+    for periodo, monto in st.session_state.ingresos.items():
+        filas.append({'Periodo': periodo, 'Categoria': 'Ingreso', 'ID_Relacionado': '', 'Descripcion': 'Total Recibido', 'Monto': monto, 'Fecha': '', 'Comision': 0, 'IVA': 0})
+    
+    # 2. Guardar Gastos Fijos
+    for periodo, df_prog in st.session_state.gastos_fijos.items():
+        for _, row in df_prog.iterrows():
+            filas.append({'Periodo': periodo, 'Categoria': 'Gasto Programado', 'ID_Relacionado': row['ID'], 'Descripcion': row['Gasto'], 'Monto': row['Monto_Programado'], 'Fecha': '', 'Comision': 0, 'IVA': 0})
+            
+    # 3. Guardar Pagos Reales
+    for periodo, df_pagos in st.session_state.pagos_reales.items():
+        for _, row in df_pagos.iterrows():
+            filas.append({'Periodo': periodo, 'Categoria': 'Pago Real', 'ID_Relacionado': row['ID_Gasto'], 'Descripcion': 'Pago registrado', 'Monto': row['Monto_Pagado'], 'Fecha': row['Fecha'], 'Comision': row['Comision'], 'IVA': row['IVA_Comision']})
+            
+    return pd.DataFrame(filas)
+
+def guardar_datos_en_nube():
+    df_consolidado = estructurar_datos_para_guardar()
+    try:
+        # Blindaje: convertir a texto para evitar errores de envío (int64)
+        df_clean = df_consolidado.fillna("").astype(str)
+        data_list = [df_clean.columns.tolist()]
+        
+        for row in df_clean.itertuples(index=False, name=None):
+            data_list.append(list(row))
+        
+        payload = {"action": "overwrite", "data": data_list}
+        res = requests.post(URL_WEB_APP, json=payload, allow_redirects=True)
+        
+        if res.status_code not in [200, 201]:
+            st.error(f"⚠️ Google respondió con error: {res.status_code}")
+            return False
+        return True
+    except Exception as e:
+        st.error(f"⚠️ Error al enviar datos: {e}")
+        return False
+
 # --- EJECUCIÓN DE LA APLICACIÓN ---
 if check_password():
-    # Usamos la variable persistente en lugar del widget temporal
     st.sidebar.success(f"Sesión iniciada como: {st.session_state['usuario_actual']}")
     
     st.title("📊 Control de Gastos y Pagos Reales")
-    st.info('Este es el sistema de control basado en tu archivo "PROGRAMACION".')
+    st.info('El sistema está conectado a tu método de Apps Script.')
 
-    # --- INICIALIZACIÓN DE BASE DE DATOS EN MEMORIA ---
+    # Inicialización local 
     if 'ingresos' not in st.session_state:
-        st.session_state.ingresos = {
-            'Mes Regular': 1000.0,
-            'Décimo Tercero': 1000.0,
-            'Décimo Cuarto': 450.0
-        }
-
+        st.session_state.ingresos = {'Mes Regular': 1000.0, 'Décimo Tercero': 1000.0, 'Décimo Cuarto': 450.0}
     if 'gastos_fijos' not in st.session_state:
         estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado'])
-        st.session_state.gastos_fijos = {
-            'Mes Regular': estructura_base.copy(),
-            'Décimo Tercero': estructura_base.copy(),
-            'Décimo Cuarto': estructura_base.copy()
-        }
-
+        st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
     if 'pagos_reales' not in st.session_state:
         estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
-        st.session_state.pagos_reales = {
-            'Mes Regular': estructura_pagos.copy(),
-            'Décimo Tercero': estructura_pagos.copy(),
-            'Décimo Cuarto': estructura_pagos.copy()
-        }
+        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
+
+    # Botón de guardado maestro en la barra lateral
+    st.sidebar.markdown("---")
+    if st.sidebar.button("💾 Guardar TODO en Google Drive", type="primary"):
+        with st.spinner("Guardando en la nube... ⏳"):
+            if guardar_datos_en_nube():
+                st.sidebar.success("✅ ¡Guardado con éxito!")
+                time.sleep(2)
+                st.rerun()
 
     # --- NAVEGACIÓN ---
-    periodo_actual = st.radio("Selecciona el periodo a gestionar:", 
-                              ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], 
-                              horizontal=True)
-
+    periodo_actual = st.radio("Selecciona el periodo a gestionar:", ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], horizontal=True)
     st.markdown("---")
     st.header(f"Gestión de: {periodo_actual}")
 
     # --- 1. CONFIGURACIÓN DE INGRESOS ---
     col_ing, _ = st.columns([1, 2])
     with col_ing:
-        nuevo_ingreso = st.number_input("Total Recibido (Ingreso Inicial):", 
-                                        min_value=0.0, 
-                                        value=st.session_state.ingresos[periodo_actual], 
-                                        step=50.0)
+        nuevo_ingreso = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=st.session_state.ingresos[periodo_actual], step=50.0)
         st.session_state.ingresos[periodo_actual] = nuevo_ingreso
 
     st.markdown("### 📝 Programación de Gastos Fijos vs Pagos Reales")
 
-    # --- 2. REGISTRO DE GASTOS FIJOS (PROGRAMACIÓN) ---
-    with st.expander("➕ Agregar Nuevo Gasto Fijo a la Programación", expanded=False):
+    # --- 2. REGISTRO DE GASTOS FIJOS ---
+    with st.expander("➕ Agregar Nuevo Gasto Fijo", expanded=False):
         with st.form(f"form_gasto_{periodo_actual}"):
             c1, c2 = st.columns(2)
             with c1:
@@ -93,14 +126,14 @@ if check_password():
             with c2:
                 monto_prog = st.number_input("Monto Programado ($)", min_value=0.0, step=10.0)
             
-            if st.form_submit_button("Guardar Gasto Fijo"):
+            if st.form_submit_button("Guardar Gasto Localmente"):
                 nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}"
                 nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_prog}])
                 st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
-                st.success("Gasto programado añadido.")
+                st.success("Gasto añadido. Usa el botón lateral para respaldar en Drive.")
                 st.rerun()
 
-    # --- 3. VISTA PARALELA (PROGRAMACIÓN Y PAGOS REALES) ---
+    # --- 3. VISTA PARALELA ---
     df_prog = st.session_state.gastos_fijos[periodo_actual]
     df_pagos = st.session_state.pagos_reales[periodo_actual]
 
@@ -109,7 +142,6 @@ if check_password():
             st.markdown(f"#### 🔹 {row['Gasto']} (Programado: ${row['Monto_Programado']:.2f})")
             
             col1, col2 = st.columns([1, 1])
-            
             with col1:
                 with st.form(f"pago_form_{row['ID']}_{periodo_actual}", clear_on_submit=True):
                     st.write("**Registrar Pago**")
@@ -122,17 +154,10 @@ if check_password():
                         iva_comision = st.number_input("IVA Comisión ($)", min_value=0.0, step=0.1)
                     
                     if st.form_submit_button("✅ Confirmar Pago"):
-                        nuevo_pago = pd.DataFrame([{
-                            'ID_Gasto': row['ID'],
-                            'Fecha': str(fecha_pago),
-                            'Monto_Pagado': monto_pago,
-                            'Comision': comision,
-                            'IVA_Comision': iva_comision
-                        }])
+                        nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_pago, 'Comision': comision, 'IVA_Comision': iva_comision}])
                         st.session_state.pagos_reales[periodo_actual] = pd.concat([st.session_state.pagos_reales[periodo_actual], nuevo_pago], ignore_index=True)
-                        st.success("Pago registrado con éxito.")
+                        st.success("Pago registrado. No olvides respaldar en la nube.")
                         st.rerun()
-                        
             with col2:
                 st.write("**Historial de Pagos Reales**")
                 pagos_gasto = df_pagos[df_pagos['ID_Gasto'] == row['ID']]
@@ -142,12 +167,10 @@ if check_password():
                     st.info(f"**Acumulado Pagado (incl. comisiones e IVA):** ${total_acumulado:.2f}")
                 else:
                     st.warning("Aún no se han registrado pagos para este rubro.")
-                    
             st.markdown("---")
 
         # --- 4. RESUMEN MATEMÁTICO FINAL ---
         st.header("📈 Resumen de Saldos")
-        
         total_programado = df_prog['Monto_Programado'].sum()
         total_pagos_puros = df_pagos['Monto_Pagado'].sum()
         total_comisiones = df_pagos['Comision'].sum() + df_pagos['IVA_Comision'].sum()
@@ -157,7 +180,5 @@ if check_password():
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Ingreso Total", f"${st.session_state.ingresos[periodo_actual]:.2f}")
         m2.metric("Total Programado", f"${total_programado:.2f}")
-        m3.metric("Total Salida Real (con comisiones)", f"${total_salida_real:.2f}")
+        m3.metric("Total Salida Real", f"${total_salida_real:.2f}")
         m4.metric("Saldo Restante", f"${saldo_restante:.2f}", delta=float(saldo_restante), delta_color="normal")
-    else:
-        st.info("Comienza agregando tus gastos fijos programados en el formulario de arriba.")
