@@ -39,7 +39,6 @@ def check_password():
 URL_WEB_APP = "https://script.google.com/macros/s/AKfycbxADLB-tc2T3fQNoUtgHXlwVIYnM7WkWBBYagAFxtFHDNJFd-Wy2RNJq-O0MART7QyS/exec"
 
 def estructurar_datos_para_guardar():
-    """Consolida todas las tablas de memoria en un solo formato para Google Sheets"""
     filas = []
     # 1. Guardar Ingresos
     for periodo, monto in st.session_state.ingresos.items():
@@ -60,16 +59,12 @@ def estructurar_datos_para_guardar():
 def guardar_datos_en_nube():
     df_consolidado = estructurar_datos_para_guardar()
     try:
-        # Blindaje: convertir a texto para evitar errores de envío (int64)
         df_clean = df_consolidado.fillna("").astype(str)
         data_list = [df_clean.columns.tolist()]
-        
         for row in df_clean.itertuples(index=False, name=None):
             data_list.append(list(row))
-        
         payload = {"action": "overwrite", "data": data_list}
         res = requests.post(URL_WEB_APP, json=payload, allow_redirects=True)
-        
         if res.status_code not in [200, 201]:
             st.error(f"⚠️ Google respondió con error: {res.status_code}")
             return False
@@ -87,15 +82,20 @@ if check_password():
 
     # Inicialización local 
     if 'ingresos' not in st.session_state:
-        st.session_state.ingresos = {'Mes Regular': 1000.0, 'Décimo Tercero': 1000.0, 'Décimo Cuarto': 450.0}
+        st.session_state.ingresos = {'Mes Regular': 1000.0, 'Décimo Tercero': 0.0, 'Décimo Cuarto': 450.0}
     if 'gastos_fijos' not in st.session_state:
         estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado'])
         st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
     if 'pagos_reales' not in st.session_state:
         estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
         st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
+    if 'decimo_tercero_meses' not in st.session_state:
+        st.session_state.decimo_tercero_meses = {
+            'Diciembre': 0.0, 'Enero': 0.0, 'Febrero': 0.0, 'Marzo': 0.0, 
+            'Abril': 0.0, 'Mayo': 0.0, 'Junio': 0.0, 'Julio': 0.0, 
+            'Agosto': 0.0, 'Septiembre': 0.0, 'Octubre': 0.0, 'Noviembre': 0.0
+        }
 
-    # Botón de guardado maestro en la barra lateral
     st.sidebar.markdown("---")
     if st.sidebar.button("💾 Guardar TODO en Google Drive", type="primary"):
         with st.spinner("Guardando en la nube... ⏳"):
@@ -110,10 +110,30 @@ if check_password():
     st.header(f"Gestión de: {periodo_actual}")
 
     # --- 1. CONFIGURACIÓN DE INGRESOS ---
-    col_ing, _ = st.columns([1, 2])
-    with col_ing:
-        nuevo_ingreso = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=st.session_state.ingresos[periodo_actual], step=50.0)
-        st.session_state.ingresos[periodo_actual] = nuevo_ingreso
+    if periodo_actual == 'Décimo Tercero':
+        with st.expander("📅 Calculadora Décimo Tercer Sueldo (Ingresa tus salarios)", expanded=True):
+            st.write("Ingresa todo lo percibido desde el 1 de dic. hasta el 30 de nov:")
+            cols = st.columns(4)
+            meses_lista = list(st.session_state.decimo_tercero_meses.keys())
+            
+            for i, mes in enumerate(meses_lista):
+                with cols[i % 4]:
+                    st.session_state.decimo_tercero_meses[mes] = st.number_input(f"{mes}", value=st.session_state.decimo_tercero_meses[mes], step=50.0)
+            
+            # Cálculo
+            total_percibido = sum(st.session_state.decimo_tercero_meses.values())
+            decimo_calculado = total_percibido / 12 if total_percibido > 0 else 0.0
+            
+            # Actualizamos el ingreso de este periodo
+            st.session_state.ingresos['Décimo Tercero'] = decimo_calculado
+            
+            st.info(f"**Total Percibido:** ${total_percibido:.2f} | **Décimo Tercero Calculado:** ${decimo_calculado:.2f}")
+
+    else:
+        col_ing, _ = st.columns([1, 2])
+        with col_ing:
+            nuevo_ingreso = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=st.session_state.ingresos[periodo_actual], step=50.0)
+            st.session_state.ingresos[periodo_actual] = nuevo_ingreso
 
     st.markdown("### 📝 Programación de Gastos Fijos vs Pagos Reales")
 
@@ -130,7 +150,7 @@ if check_password():
                 nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}"
                 nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_prog}])
                 st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
-                st.success("Gasto añadido. Usa el botón lateral para respaldar en Drive.")
+                st.success("Gasto añadido.")
                 st.rerun()
 
     # --- 3. VISTA PARALELA ---
@@ -156,7 +176,7 @@ if check_password():
                     if st.form_submit_button("✅ Confirmar Pago"):
                         nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_pago, 'Comision': comision, 'IVA_Comision': iva_comision}])
                         st.session_state.pagos_reales[periodo_actual] = pd.concat([st.session_state.pagos_reales[periodo_actual], nuevo_pago], ignore_index=True)
-                        st.success("Pago registrado. No olvides respaldar en la nube.")
+                        st.success("Pago registrado.")
                         st.rerun()
             with col2:
                 st.write("**Historial de Pagos Reales**")
@@ -164,7 +184,7 @@ if check_password():
                 if not pagos_gasto.empty:
                     st.dataframe(pagos_gasto[['Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision']], hide_index=True, use_container_width=True)
                     total_acumulado = pagos_gasto['Monto_Pagado'].sum() + pagos_gasto['Comision'].sum() + pagos_gasto['IVA_Comision'].sum()
-                    st.info(f"**Acumulado Pagado (incl. comisiones e IVA):** ${total_acumulado:.2f}")
+                    st.info(f"**Acumulado Pagado:** ${total_acumulado:.2f}")
                 else:
                     st.warning("Aún no se han registrado pagos para este rubro.")
             st.markdown("---")
