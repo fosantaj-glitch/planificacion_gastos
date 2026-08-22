@@ -102,21 +102,55 @@ if check_password():
     if 'pagos_reales' not in st.session_state:
         estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
         st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
+    if 'decimo_tercero_meses' not in st.session_state:
+        st.session_state.decimo_tercero_meses = {
+            'Diciembre': 0.0, 'Enero': 0.0, 'Febrero': 0.0, 'Marzo': 0.0, 
+            'Abril': 0.0, 'Mayo': 0.0, 'Junio': 0.0, 'Julio': 0.0, 
+            'Agosto': 0.0, 'Septiembre': 0.0, 'Octubre': 0.0, 'Noviembre': 0.0
+        }
 
     periodo_actual = st.radio("SELECCIONA EL PERIODO:", ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], horizontal=True)
     st.write("<br>", unsafe_allow_html=True)
 
-    # --- 1. INGRESOS ---
-    with st.form(f"form_ingreso_{periodo_actual}"):
-        st.markdown(f"**Ingreso para: {periodo_actual}**")
-        val_ing = st.session_state.ingresos[periodo_actual]
-        nuevo_ingreso_raw = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0.00", step=50.0, format="%.2f")
-        
-        if st.form_submit_button("💾 Actualizar Ingreso"):
-            st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
-            guardar_datos_en_nube()
-            st.success("Ingreso guardado.")
-            st.rerun()
+    # --- 1. INGRESOS Y CALCULADORA DÉCIMO TERCERO ---
+    if periodo_actual == 'Décimo Tercero':
+        with st.form("form_calculadora_decimo"):
+            st.markdown("**📅 Calculadora Décimo Tercer Sueldo (Ingresa tus salarios)**")
+            st.write("Ingresa todo lo percibido desde el 1 de dic. hasta el 30 de nov:")
+            cols = st.columns(4)
+            meses_lista = list(st.session_state.decimo_tercero_meses.keys())
+            
+            for i, mes in enumerate(meses_lista):
+                with cols[i % 4]:
+                    val_actual = st.session_state.decimo_tercero_meses[mes]
+                    val_ingresado_raw = st.number_input(f"{mes}", value=val_actual if val_actual > 0 else None, placeholder="0", step=50.0)
+                    st.session_state.decimo_tercero_meses[mes] = val_ingresado_raw if val_ingresado_raw is not None else 0.0
+            
+            # Cálculo
+            total_percibido = sum(st.session_state.decimo_tercero_meses.values())
+            decimo_calculado = total_percibido / 12 if total_percibido > 0 else 0.0
+            
+            st.info(f"**Total Percibido:** ${total_percibido:.2f} | **Décimo Tercero Calculado:** ${decimo_calculado:.2f}")
+
+            # Botón de autoguardado
+            if st.form_submit_button("💾 Actualizar y Guardar Meses"):
+                st.session_state.ingresos['Décimo Tercero'] = decimo_calculado
+                guardar_datos_en_nube()
+                st.success("✅ Guardado automático exitoso.")
+                time.sleep(1.5)
+                st.rerun()
+    else:
+        with st.form(f"form_ingreso_{periodo_actual}"):
+            st.markdown(f"**Ingreso para: {periodo_actual}**")
+            val_ing = st.session_state.ingresos[periodo_actual]
+            nuevo_ingreso_raw = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0.00", step=50.0, format="%.2f")
+            
+            if st.form_submit_button("💾 Actualizar Ingreso"):
+                st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
+                guardar_datos_en_nube()
+                st.success("Ingreso guardado.")
+                time.sleep(1.5)
+                st.rerun()
 
     st.write("---")
     st.markdown("### 📝 LISTA DE GASTOS PROGRAMADOS")
@@ -145,6 +179,7 @@ if check_password():
                     st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
                     guardar_datos_en_nube()
                     st.success("Gasto programado exitosamente.")
+                    time.sleep(1.5)
                     st.rerun()
 
     # --- 3. LISTADO VISUAL Y EJECUCIÓN DE PAGOS ---
