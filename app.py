@@ -112,6 +112,12 @@ if check_password():
     st.markdown('<p class="subtitulo-marca">Gestión de Presupuesto y Gastos Reales</p>', unsafe_allow_html=True)
     st.write("---")
 
+    # --- PROTECCIÓN CONTRA ERRORES DE CACHÉ ---
+    if 'mes_operativo' not in st.session_state:
+        st.session_state.mes_operativo = "Agosto"
+    if 'anio_operativo' not in st.session_state:
+        st.session_state.anio_operativo = 2026
+
     if 'datos_cargados' not in st.session_state:
         st.session_state.ingresos = {'Mes Regular': 0.0, 'Décimo Tercero': 0.0, 'Décimo Cuarto': 0.0}
         st.session_state.decimo_tercero_meses = {
@@ -119,10 +125,6 @@ if check_password():
             'Abril': 0.0, 'Mayo': 0.0, 'Junio': 0.0, 'Julio': 0.0, 
             'Agosto': 0.0, 'Septiembre': 0.0, 'Octubre': 0.0, 'Noviembre': 0.0
         }
-        
-        # Variables operativas de mes y año
-        st.session_state.mes_operativo = "Agosto"
-        st.session_state.anio_operativo = 2026
         
         estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado', 'Comision_Prog', 'IVA_Prog', 'Estado'])
         st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
