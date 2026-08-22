@@ -55,18 +55,36 @@ def check_password():
         return False
     return True
 
-# --- FUNCIONES BASE DE DATOS ---
+# --- FUNCIONES BASE DE DATOS (NUBE) ---
 URL_WEB_APP = "https://script.google.com/macros/s/AKfycbx9lOCIm2IZNuDeLl8xmBL8QSR5sekd12Ngx3cELrNvYYefhuVJN6VhgBdezNcfiijo/exec"
+
+def cargar_datos_desde_nube():
+    try:
+        res = requests.get(URL_WEB_APP)
+        if res.status_code in [200, 201]:
+            data = res.json()
+            if len(data) > 1:
+                return pd.DataFrame(data[1:], columns=data[0])
+    except:
+        pass
+    return pd.DataFrame()
 
 def estructurar_datos_para_guardar():
     filas = []
+    # 1. Ingresos
     for periodo, monto in st.session_state.ingresos.items():
         filas.append({'Periodo': periodo, 'Categoria': 'Ingreso', 'ID_Relacionado': '', 'Descripcion': 'Total Recibido', 'Monto': monto, 'Fecha': '', 'Comision': 0, 'IVA': 0, 'Estado': ''})
     
+    # 2. Los 12 meses del Décimo Tercero
+    for mes, valor in st.session_state.decimo_tercero_meses.items():
+        filas.append({'Periodo': 'Décimo Tercero', 'Categoria': 'Mes Decimo', 'ID_Relacionado': mes, 'Descripcion': 'Salario Mensual', 'Monto': valor, 'Fecha': '', 'Comision': 0, 'IVA': 0, 'Estado': ''})
+    
+    # 3. Gastos
     for periodo, df_prog in st.session_state.gastos_fijos.items():
         for _, row in df_prog.iterrows():
             filas.append({'Periodo': periodo, 'Categoria': 'Programacion', 'ID_Relacionado': row['ID'], 'Descripcion': row['Gasto'], 'Monto': row['Monto_Programado'], 'Fecha': '', 'Comision': row['Comision_Prog'], 'IVA': row['IVA_Prog'], 'Estado': row['Estado']})
             
+    # 4. Pagos
     for periodo, df_pagos in st.session_state.pagos_reales.items():
         for _, row in df_pagos.iterrows():
             filas.append({'Periodo': periodo, 'Categoria': 'Pago Real', 'ID_Relacionado': row['ID_Gasto'], 'Descripcion': 'Pago ejecutado', 'Monto': row['Monto_Pagado'], 'Fecha': row['Fecha'], 'Comision': row['Comision'], 'IVA': row['IVA_Comision'], 'Estado': 'Pagado'})
@@ -84,6 +102,7 @@ def guardar_datos_en_nube():
         res = requests.post(URL_WEB_APP, json=payload, allow_redirects=True)
         return True
     except Exception as e:
+        st.error(f"Error guardando: {e}")
         return False
 
 # --- EJECUCIÓN APP ---
@@ -93,21 +112,71 @@ if check_password():
     st.markdown('<p class="subtitulo-marca">Gestión de Presupuesto y Gastos Reales</p>', unsafe_allow_html=True)
     st.write("---")
 
-    # Inicialización local 
-    if 'ingresos' not in st.session_state:
+    # --- INICIALIZACIÓN Y DESCARGA DESDE GOOGLE DRIVE ---
+    if 'datos_cargados' not in st.session_state:
+        # Estructuras vacías por defecto
         st.session_state.ingresos = {'Mes Regular': 0.0, 'Décimo Tercero': 0.0, 'Décimo Cuarto': 0.0}
-    if 'gastos_fijos' not in st.session_state:
-        estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado', 'Comision_Prog', 'IVA_Prog', 'Estado'])
-        st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
-    if 'pagos_reales' not in st.session_state:
-        estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
-        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
-    if 'decimo_tercero_meses' not in st.session_state:
         st.session_state.decimo_tercero_meses = {
             'Diciembre': 0.0, 'Enero': 0.0, 'Febrero': 0.0, 'Marzo': 0.0, 
             'Abril': 0.0, 'Mayo': 0.0, 'Junio': 0.0, 'Julio': 0.0, 
             'Agosto': 0.0, 'Septiembre': 0.0, 'Octubre': 0.0, 'Noviembre': 0.0
         }
+        
+        estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado', 'Comision_Prog', 'IVA_Prog', 'Estado'])
+        st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
+        
+        estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
+        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
+
+        # Sincronizamos con Google Sheets
+        with st.spinner("Descargando datos desde Google Drive..."):
+            df_cloud = cargar_datos_desde_nube()
+            
+            if not df_cloud.empty:
+                # Recuperar Ingresos
+                ing_df = df_cloud[df_cloud['Categoria'] == 'Ingreso']
+                for _, row in ing_df.iterrows():
+                    if row['Periodo'] in st.session_state.ingresos:
+                        try: st.session_state.ingresos[row['Periodo']] = float(row['Monto'])
+                        except: pass
+                
+                # Recuperar Meses Décimo Tercero
+                meses_df = df_cloud[df_cloud['Categoria'] == 'Mes Decimo']
+                for _, row in meses_df.iterrows():
+                    if row['ID_Relacionado'] in st.session_state.decimo_tercero_meses:
+                        try: st.session_state.decimo_tercero_meses[row['ID_Relacionado']] = float(row['Monto'])
+                        except: pass
+                
+                # Recuperar Gastos
+                prog_df = df_cloud[df_cloud['Categoria'] == 'Programacion']
+                for periodo in ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto']:
+                    p_df = prog_df[prog_df['Periodo'] == periodo]
+                    if not p_df.empty:
+                        df_to_save = pd.DataFrame({
+                            'ID': p_df['ID_Relacionado'].values,
+                            'Gasto': p_df['Descripcion'].values,
+                            'Monto_Programado': pd.to_numeric(p_df['Monto'], errors='coerce').fillna(0.0),
+                            'Comision_Prog': pd.to_numeric(p_df['Comision'], errors='coerce').fillna(0.0),
+                            'IVA_Prog': pd.to_numeric(p_df['IVA'], errors='coerce').fillna(0.0),
+                            'Estado': p_df['Estado'].values
+                        })
+                        st.session_state.gastos_fijos[periodo] = df_to_save
+
+                # Recuperar Pagos
+                pagos_df = df_cloud[df_cloud['Categoria'] == 'Pago Real']
+                for periodo in ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto']:
+                    p_df = pagos_df[pagos_df['Periodo'] == periodo]
+                    if not p_df.empty:
+                        df_to_save = pd.DataFrame({
+                            'ID_Gasto': p_df['ID_Relacionado'].values,
+                            'Fecha': p_df['Fecha'].values,
+                            'Monto_Pagado': pd.to_numeric(p_df['Monto'], errors='coerce').fillna(0.0),
+                            'Comision': pd.to_numeric(p_df['Comision'], errors='coerce').fillna(0.0),
+                            'IVA_Comision': pd.to_numeric(p_df['IVA'], errors='coerce').fillna(0.0)
+                        })
+                        st.session_state.pagos_reales[periodo] = df_to_save
+
+        st.session_state.datos_cargados = True
 
     periodo_actual = st.radio("SELECCIONA EL PERIODO:", ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], horizontal=True)
     st.write("<br>", unsafe_allow_html=True)
@@ -132,10 +201,10 @@ if check_password():
             
             st.info(f"**Total Percibido:** ${total_percibido:.2f} | **Décimo Tercero Calculado:** ${decimo_calculado:.2f}")
 
-            # Botón de autoguardado
             if st.form_submit_button("💾 Actualizar y Guardar Meses"):
                 st.session_state.ingresos['Décimo Tercero'] = decimo_calculado
-                guardar_datos_en_nube()
+                with st.spinner("Sincronizando con la nube... ⏳"):
+                    guardar_datos_en_nube()
                 st.success("✅ Guardado automático exitoso.")
                 time.sleep(1.5)
                 st.rerun()
@@ -147,7 +216,8 @@ if check_password():
             
             if st.form_submit_button("💾 Actualizar Ingreso"):
                 st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
-                guardar_datos_en_nube()
+                with st.spinner("Sincronizando con la nube... ⏳"):
+                    guardar_datos_en_nube()
                 st.success("Ingreso guardado.")
                 time.sleep(1.5)
                 st.rerun()
@@ -177,7 +247,8 @@ if check_password():
                     
                     nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_p, 'Comision_Prog': comis_p, 'IVA_Prog': iva_p, 'Estado': 'Pendiente'}])
                     st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
-                    guardar_datos_en_nube()
+                    with st.spinner("Sincronizando con la nube... ⏳"):
+                        guardar_datos_en_nube()
                     st.success("Gasto programado exitosamente.")
                     time.sleep(1.5)
                     st.rerun()
@@ -202,7 +273,6 @@ if check_password():
                 </div>
             """, unsafe_allow_html=True)
             
-            # Formulario de pago si está pendiente
             if row['Estado'] == 'Pendiente':
                 with st.expander(f"💳 Realizar Pago: {row['Gasto']}", expanded=False):
                     with st.form(f"pago_{row['ID']}_{periodo_actual}"):
@@ -225,14 +295,13 @@ if check_password():
                             comis_f = comision_pago if comision_pago is not None else 0.0
                             iva_f = iva_pago if iva_pago is not None else 0.0
                             
-                            # 1. Registrar el pago real
                             nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_f, 'Comision': comis_f, 'IVA_Comision': iva_f}])
                             st.session_state.pagos_reales[periodo_actual] = pd.concat([st.session_state.pagos_reales[periodo_actual], nuevo_pago], ignore_index=True)
                             
-                            # 2. Cambiar el estado a Pagado
                             st.session_state.gastos_fijos[periodo_actual].at[index, 'Estado'] = 'Pagado'
                             
-                            guardar_datos_en_nube()
+                            with st.spinner("Registrando en la nube... ⏳"):
+                                guardar_datos_en_nube()
                             st.rerun()
     else:
         st.info("No hay gastos programados. Empieza agregando uno arriba.")
