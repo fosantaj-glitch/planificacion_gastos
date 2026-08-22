@@ -120,6 +120,10 @@ if check_password():
             'Agosto': 0.0, 'Septiembre': 0.0, 'Octubre': 0.0, 'Noviembre': 0.0
         }
         
+        # Variables operativas de mes y año
+        st.session_state.mes_operativo = "Agosto"
+        st.session_state.anio_operativo = 2026
+        
         estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado', 'Comision_Prog', 'IVA_Prog', 'Estado'])
         st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
         
@@ -174,6 +178,25 @@ if check_password():
     periodo_actual = st.radio("SELECCIONA EL PERIODO:", ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], horizontal=True)
     st.write("<br>", unsafe_allow_html=True)
 
+    # --- INDICADOR DE MES PARA "MES REGULAR" ---
+    if periodo_actual == 'Mes Regular':
+        st.markdown("### 📅 Mes Operativo")
+        c_m1, c_m2 = st.columns([1, 1])
+        with c_m1:
+            meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            nuevo_mes = st.selectbox("Selecciona el Mes:", meses, index=meses.index(st.session_state.mes_operativo))
+        with c_m2:
+            anios = [2026, 2027, 2028, 2029, 2030]
+            nuevo_anio = st.selectbox("Selecciona el Año:", anios, index=anios.index(st.session_state.anio_operativo))
+        
+        if nuevo_mes != st.session_state.mes_operativo or nuevo_anio != st.session_state.anio_operativo:
+            st.session_state.mes_operativo = nuevo_mes
+            st.session_state.anio_operativo = nuevo_anio
+            st.rerun()
+            
+        st.info(f"📍 **Estás gestionando el presupuesto y los pagos para:** {st.session_state.mes_operativo} {st.session_state.anio_operativo}")
+        st.write("---")
+
     if periodo_actual == 'Décimo Tercero':
         with st.form("form_calculadora_decimo"):
             st.markdown("**📅 Calculadora Décimo Tercer Sueldo (Ingresa tus salarios)**")
@@ -199,9 +222,9 @@ if check_password():
                         st.rerun()
     else:
         with st.form(f"form_ingreso_{periodo_actual}"):
-            st.markdown(f"**Ingreso para: {periodo_actual}**")
+            st.markdown(f"**Ingreso Inicial**")
             val_ing = st.session_state.ingresos[periodo_actual]
-            nuevo_ingreso_raw = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0.00", step=50.0, format="%.2f")
+            nuevo_ingreso_raw = st.number_input("Total Recibido (Presupuesto Base):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0.00", step=50.0, format="%.2f")
             
             if st.form_submit_button("💾 Actualizar Ingreso"):
                 st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
@@ -215,7 +238,6 @@ if check_password():
     st.markdown("### 📝 LISTA DE GASTOS PROGRAMADOS")
 
     with st.expander("➕ Programar Nuevo Gasto Fijo", expanded=False):
-        # Mantenemos clear_on_submit=True para que quede en blanco tras guardar
         with st.form(f"form_nuevo_gasto_{periodo_actual}", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns(4)
             with c1: nombre_gasto = st.text_input("Descripción del Gasto")
@@ -306,10 +328,8 @@ if check_password():
                                 guardar_datos_en_nube()
                             st.rerun()
 
-                    # El botón de borrar va fuera del form para no chocar con el guardado
                     st.write("")
                     if st.button("🗑️ Eliminar Gasto", key=f"del_{row['ID']}_{periodo_actual}", type="secondary"):
-                        # Se filtra la tabla para excluir el ID borrado
                         st.session_state.gastos_fijos[periodo_actual] = st.session_state.gastos_fijos[periodo_actual][st.session_state.gastos_fijos[periodo_actual]['ID'] != row['ID']].reset_index(drop=True)
                         with st.spinner("Borrando registro de la nube... ⏳"):
                             guardar_datos_en_nube()
