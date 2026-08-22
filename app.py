@@ -112,7 +112,6 @@ if check_password():
     st.markdown('<p class="subtitulo-marca">Gestión de Presupuesto y Gastos Reales</p>', unsafe_allow_html=True)
     st.write("---")
 
-    # --- INICIALIZACIÓN Y DESCARGA DESDE GOOGLE DRIVE ---
     if 'datos_cargados' not in st.session_state:
         st.session_state.ingresos = {'Mes Regular': 0.0, 'Décimo Tercero': 0.0, 'Décimo Cuarto': 0.0}
         st.session_state.decimo_tercero_meses = {
@@ -216,7 +215,7 @@ if check_password():
     st.markdown("### 📝 LISTA DE GASTOS PROGRAMADOS")
 
     with st.expander("➕ Programar Nuevo Gasto Fijo", expanded=False):
-        # AÑADIMOS clear_on_submit=True PARA QUE SE LIMPIE AUTOMÁTICAMENTE
+        # Mantenemos clear_on_submit=True para que quede en blanco tras guardar
         with st.form(f"form_nuevo_gasto_{periodo_actual}", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns(4)
             with c1: nombre_gasto = st.text_input("Descripción del Gasto")
@@ -226,7 +225,7 @@ if check_password():
             
             if st.form_submit_button("💾 Guardar en Programación"):
                 if nombre_gasto != "":
-                    nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}"
+                    nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}_{int(time.time())}"
                     monto_p = monto_prog_raw if monto_prog_raw is not None else 0.0
                     comis_p = comision_prog_raw if comision_prog_raw is not None else 0.0
                     iva_p = iva_prog_raw if iva_prog_raw is not None else 0.0
@@ -253,53 +252,83 @@ if check_password():
                         </span>
                     </div>
                     <div style="color: #64748B; font-size: 14px; margin-top: 5px;">
-                        Programado: <b>${row['Monto_Programado']:.2f}</b> | Comisión: <b>${row['Comision_Prog']:.2f}</b> | IVA: <b>${row['IVA_Prog']:.2f}</b>
+                        Programado: <b>${float(row['Monto_Programado']):.2f}</b> | Comisión: <b>${float(row['Comision_Prog']):.2f}</b> | IVA: <b>${float(row['IVA_Prog']):.2f}</b>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
             
-            if row['Estado'] == 'Pendiente':
-                # AQUÍ TAMBIÉN AGREGAMOS clear_on_submit PARA QUE EL FORMULARIO DE PAGO SE LIMPIE AL FINALIZAR
-                with st.expander(f"💳 Realizar Pago: {row['Gasto']}", expanded=False):
-                    with st.form(f"pago_{row['ID']}_{periodo_actual}", clear_on_submit=True):
-                        st.info("Valores precargados de tu programación. Modifícalos si el valor real varió.")
-                        c_p1, c_p2, c_p3 = st.columns(3)
-                        with c_p1: fecha_pago = st.date_input("Fecha de Pago", date.today())
-                        with c_p2:
-                            val_pago_defecto = row['Monto_Programado'] if row['Monto_Programado'] > 0 else None
-                            monto_pago = st.number_input("Monto Real Pagado ($)", min_value=0.0, value=val_pago_defecto, placeholder="0", step=10.0)
-                        with c_p3:
-                            val_comis = row['Comision_Prog'] if row['Comision_Prog'] > 0 else None
+            c_p1, c_p2 = st.columns(2)
+            
+            with c_p1:
+                if row['Estado'] == 'Pendiente':
+                    with st.expander(f"💳 Realizar Pago", expanded=False):
+                        with st.form(f"pago_{row['ID']}_{periodo_actual}", clear_on_submit=True):
+                            st.info("Modifica los valores si el cobro real varió.")
+                            fecha_pago = st.date_input("Fecha de Pago", date.today())
+                            
+                            val_pago_defecto = float(row['Monto_Programado']) if float(row['Monto_Programado']) > 0 else None
+                            monto_pago = st.number_input("Monto Real ($)", min_value=0.0, value=val_pago_defecto, placeholder="0", step=10.0)
+                            
+                            val_comis = float(row['Comision_Prog']) if float(row['Comision_Prog']) > 0 else None
                             comision_pago = st.number_input("Comisión Real ($)", min_value=0.0, value=val_comis, placeholder="0", step=1.0)
-                            val_iva = row['IVA_Prog'] if row['IVA_Prog'] > 0 else None
+                            
+                            val_iva = float(row['IVA_Prog']) if float(row['IVA_Prog']) > 0 else None
                             iva_pago = st.number_input("IVA Real ($)", min_value=0.0, value=val_iva, placeholder="0", step=0.1)
-                            
-                        if st.form_submit_button("✅ Confirmar Pago y Actualizar", type="primary"):
-                            monto_f = monto_pago if monto_pago is not None else 0.0
-                            comis_f = comision_pago if comision_pago is not None else 0.0
-                            iva_f = iva_pago if iva_pago is not None else 0.0
-                            
-                            nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_f, 'Comision': comis_f, 'IVA_Comision': iva_f}])
-                            st.session_state.pagos_reales[periodo_actual] = pd.concat([st.session_state.pagos_reales[periodo_actual], nuevo_pago], ignore_index=True)
-                            st.session_state.gastos_fijos[periodo_actual].at[index, 'Estado'] = 'Pagado'
-                            
-                            with st.spinner("Registrando en la nube... ⏳"):
-                                if guardar_datos_en_nube():
-                                    st.rerun()
+                                
+                            if st.form_submit_button("✅ Confirmar Pago", type="primary"):
+                                monto_f = monto_pago if monto_pago is not None else 0.0
+                                comis_f = comision_pago if comision_pago is not None else 0.0
+                                iva_f = iva_pago if iva_pago is not None else 0.0
+                                
+                                nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_f, 'Comision': comis_f, 'IVA_Comision': iva_f}])
+                                st.session_state.pagos_reales[periodo_actual] = pd.concat([st.session_state.pagos_reales[periodo_actual], nuevo_pago], ignore_index=True)
+                                st.session_state.gastos_fijos[periodo_actual].at[index, 'Estado'] = 'Pagado'
+                                
+                                with st.spinner("Registrando en la nube... ⏳"):
+                                    if guardar_datos_en_nube():
+                                        st.rerun()
+            
+            with c_p2:
+                with st.expander(f"⚙️ Editar / Borrar", expanded=False):
+                    with st.form(f"edit_{row['ID']}_{periodo_actual}"):
+                        st.write("**Modificar Programación**")
+                        e_nom = st.text_input("Gasto", value=row['Gasto'])
+                        e_monto = st.number_input("Monto ($)", min_value=0.0, value=float(row['Monto_Programado']), step=10.0)
+                        e_com = st.number_input("Comisión ($)", min_value=0.0, value=float(row['Comision_Prog']), step=1.0)
+                        e_iva = st.number_input("IVA ($)", min_value=0.0, value=float(row['IVA_Prog']), step=0.1)
+                        
+                        if st.form_submit_button("💾 Actualizar Valores"):
+                            st.session_state.gastos_fijos[periodo_actual].at[index, 'Gasto'] = e_nom
+                            st.session_state.gastos_fijos[periodo_actual].at[index, 'Monto_Programado'] = e_monto
+                            st.session_state.gastos_fijos[periodo_actual].at[index, 'Comision_Prog'] = e_com
+                            st.session_state.gastos_fijos[periodo_actual].at[index, 'IVA_Prog'] = e_iva
+                            with st.spinner("Actualizando... ⏳"):
+                                guardar_datos_en_nube()
+                            st.rerun()
+
+                    # El botón de borrar va fuera del form para no chocar con el guardado
+                    st.write("")
+                    if st.button("🗑️ Eliminar Gasto", key=f"del_{row['ID']}_{periodo_actual}", type="secondary"):
+                        # Se filtra la tabla para excluir el ID borrado
+                        st.session_state.gastos_fijos[periodo_actual] = st.session_state.gastos_fijos[periodo_actual][st.session_state.gastos_fijos[periodo_actual]['ID'] != row['ID']].reset_index(drop=True)
+                        with st.spinner("Borrando registro de la nube... ⏳"):
+                            guardar_datos_en_nube()
+                        st.rerun()
+                        
     else:
         st.info("No hay gastos programados. Empieza agregando uno arriba.")
 
     st.write("<br><br>", unsafe_allow_html=True)
     
     st.markdown("### 📈 RESUMEN DE SALDOS")
-    total_programado = df_prog['Monto_Programado'].sum() + df_prog['Comision_Prog'].sum() + df_prog['IVA_Prog'].sum()
-    total_pagos_puros = df_pagos['Monto_Pagado'].sum()
-    total_comisiones = df_pagos['Comision'].sum() + df_pagos['IVA_Comision'].sum()
+    total_programado = df_prog['Monto_Programado'].astype(float).sum() + df_prog['Comision_Prog'].astype(float).sum() + df_prog['IVA_Prog'].astype(float).sum()
+    total_pagos_puros = df_pagos['Monto_Pagado'].astype(float).sum()
+    total_comisiones = df_pagos['Comision'].astype(float).sum() + df_pagos['IVA_Comision'].astype(float).sum()
     total_salida_real = total_pagos_puros + total_comisiones
-    saldo_restante = st.session_state.ingresos[periodo_actual] - total_salida_real
+    saldo_restante = float(st.session_state.ingresos[periodo_actual]) - total_salida_real
     
     m1, m2, m3, m4 = st.columns(4)
-    with m1: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">INGRESO INICIAL</div><div class="kpi-valor" style="color:#16A34A;">${st.session_state.ingresos[periodo_actual]:.2f}</div></div>', unsafe_allow_html=True)
+    with m1: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">INGRESO INICIAL</div><div class="kpi-valor" style="color:#16A34A;">${float(st.session_state.ingresos[periodo_actual]):.2f}</div></div>', unsafe_allow_html=True)
     with m2: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">TOTAL PROGRAMADO</div><div class="kpi-valor">${total_programado:.2f}</div></div>', unsafe_allow_html=True)
     with m3: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">TOTAL GASTO REAL</div><div class="kpi-valor" style="color:#DC2626;">${total_salida_real:.2f}</div></div>', unsafe_allow_html=True)
     with m4: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">SALDO RESTANTE</div><div class="kpi-valor">${saldo_restante:.2f}</div></div>', unsafe_allow_html=True)
