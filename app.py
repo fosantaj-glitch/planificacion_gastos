@@ -125,7 +125,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- FUNCIONES BASE DE DATOS (NUBE) BLINDADAS ---
-URL_WEB_APP = "https://script.google.com/macros/s/AKfycbx9lOCIm2IZNuDeLl8xmBL8QSR5sekd12Ngx3cELrNvYYefhuVJN6VhgBdezNcfiijo/exec"
+URL_WEB_APP = "Pega_tu_URL_de_Apps_Script_AQUI_terminada_en_/exec"
 
 def cargar_datos_desde_nube():
     try:
@@ -174,6 +174,23 @@ def guardar_datos_en_nube():
         st.error(f"⚠️ Ocurrió un error al intentar enviar los datos: {e}")
         return False
 
+# --- FUNCIÓN VISUAL: CABECERA CON BOTÓN DE SALIDA ---
+def mostrar_cabecera(mostrar_salir=False):
+    col_info, col_accion = st.columns([7, 3])
+    
+    with col_info:
+        st.markdown('<p class="titulo-principal">📊 PANEL FINANCIERO</p>', unsafe_allow_html=True)
+        st.markdown('<p class="subtitulo-marca">Gestión Estratégica de Presupuesto y Gastos</p>', unsafe_allow_html=True)
+        
+    with col_accion:
+        if mostrar_salir:
+            st.write("<br>", unsafe_allow_html=True)
+            if st.button("🚪 Cerrar Sesión", use_container_width=True):
+                # Borrar credenciales y reiniciar la aplicación
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
+
 # --- SISTEMA DE LOGIN DE ALTO IMPACTO ---
 def check_password():
     def password_entered():
@@ -205,9 +222,8 @@ def check_password():
 # --- EJECUCIÓN APP ---
 if check_password():
     
-    # CABECERA EMPRESARIAL
-    st.markdown('<p class="titulo-principal">📊 PANEL FINANCIERO</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitulo-marca">Gestión Estratégica de Presupuesto y Gastos</p>', unsafe_allow_html=True)
+    # CABECERA EMPRESARIAL CON BOTÓN DE SALIDA
+    mostrar_cabecera(mostrar_salir=True)
     
     # PROTECCIÓN CONTRA ERRORES DE CACHÉ
     if 'mes_operativo' not in st.session_state:
@@ -227,7 +243,7 @@ if check_password():
         st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
         
         estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
-        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
+        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy() if 'structure_pagos' in locals() else estructura_pagos.copy()}
 
         with st.spinner("Descargando base de datos segura... ⏳"):
             df_cloud = cargar_datos_desde_nube()
