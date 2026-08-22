@@ -82,7 +82,7 @@ if check_password():
 
     # Inicialización local 
     if 'ingresos' not in st.session_state:
-        st.session_state.ingresos = {'Mes Regular': 1000.0, 'Décimo Tercero': 0.0, 'Décimo Cuarto': 450.0}
+        st.session_state.ingresos = {'Mes Regular': 0.0, 'Décimo Tercero': 0.0, 'Décimo Cuarto': 0.0}
     if 'gastos_fijos' not in st.session_state:
         estructura_base = pd.DataFrame(columns=['ID', 'Gasto', 'Monto_Programado'])
         st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
@@ -118,7 +118,10 @@ if check_password():
             
             for i, mes in enumerate(meses_lista):
                 with cols[i % 4]:
-                    st.session_state.decimo_tercero_meses[mes] = st.number_input(f"{mes}", value=st.session_state.decimo_tercero_meses[mes], step=50.0)
+                    val_actual = st.session_state.decimo_tercero_meses[mes]
+                    # Ceros automáticos para los meses
+                    val_ingresado_raw = st.number_input(f"{mes}", value=val_actual if val_actual > 0 else None, placeholder="0", step=50.0)
+                    st.session_state.decimo_tercero_meses[mes] = val_ingresado_raw if val_ingresado_raw is not None else 0.0
             
             # Cálculo
             total_percibido = sum(st.session_state.decimo_tercero_meses.values())
@@ -132,8 +135,10 @@ if check_password():
     else:
         col_ing, _ = st.columns([1, 2])
         with col_ing:
-            nuevo_ingreso = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=st.session_state.ingresos[periodo_actual], step=50.0)
-            st.session_state.ingresos[periodo_actual] = nuevo_ingreso
+            val_ing = st.session_state.ingresos[periodo_actual]
+            # Cero automático para el ingreso inicial
+            nuevo_ingreso_raw = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0", step=50.0)
+            st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
 
     st.markdown("### 📝 Programación de Gastos Fijos vs Pagos Reales")
 
@@ -144,14 +149,17 @@ if check_password():
             with c1:
                 nombre_gasto = st.text_input("Nombre del Gasto Fijo")
             with c2:
-                monto_prog = st.number_input("Monto Programado ($)", min_value=0.0, step=10.0)
+                # Cero automático para el nuevo gasto programado
+                monto_prog_raw = st.number_input("Monto Programado ($)", min_value=0.0, value=None, placeholder="0", step=10.0)
+                monto_prog = monto_prog_raw if monto_prog_raw is not None else 0.0
             
             if st.form_submit_button("Guardar Gasto Localmente"):
-                nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}"
-                nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_prog}])
-                st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
-                st.success("Gasto añadido.")
-                st.rerun()
+                if nombre_gasto != "":
+                    nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}"
+                    nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_prog}])
+                    st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
+                    st.success("Gasto añadido.")
+                    st.rerun()
 
     # --- 3. VISTA PARALELA ---
     df_prog = st.session_state.gastos_fijos[periodo_actual]
@@ -168,10 +176,18 @@ if check_password():
                     c_f, c_m = st.columns(2)
                     with c_f:
                         fecha_pago = st.date_input("Fecha", date.today())
-                        comision = st.number_input("Comisión ($)", min_value=0.0, step=1.0)
+                        # Cero automático para la comisión
+                        comision_raw = st.number_input("Comisión ($)", min_value=0.0, value=None, placeholder="0", step=1.0)
+                        comision = comision_raw if comision_raw is not None else 0.0
                     with c_m:
-                        monto_pago = st.number_input("Monto a Pagar ($)", min_value=0.0, value=row['Monto_Programado'], step=10.0)
-                        iva_comision = st.number_input("IVA Comisión ($)", min_value=0.0, step=0.1)
+                        # Para el pago, asume por defecto lo programado. Si estaba en cero, muestra el placeholder.
+                        val_pago_defecto = row['Monto_Programado'] if row['Monto_Programado'] > 0 else None
+                        monto_pago_raw = st.number_input("Monto a Pagar ($)", min_value=0.0, value=val_pago_defecto, placeholder="0", step=10.0)
+                        monto_pago = monto_pago_raw if monto_pago_raw is not None else 0.0
+                        
+                        # Cero automático para el IVA
+                        iva_raw = st.number_input("IVA Comisión ($)", min_value=0.0, value=None, placeholder="0", step=0.1)
+                        iva_comision = iva_raw if iva_raw is not None else 0.0
                     
                     if st.form_submit_button("✅ Confirmar Pago"):
                         nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_pago, 'Comision': comision, 'IVA_Comision': iva_comision}])
