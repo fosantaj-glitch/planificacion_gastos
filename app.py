@@ -78,7 +78,7 @@ if check_password():
     st.sidebar.success(f"Sesión iniciada como: {st.session_state['usuario_actual']}")
     
     st.title("📊 Control de Gastos y Pagos Reales")
-    st.info('El sistema está conectado a tu método de Apps Script.')
+    st.info('El sistema de autoguardado en Google Drive está activo.')
 
     # Inicialización local 
     if 'ingresos' not in st.session_state:
@@ -96,14 +96,6 @@ if check_password():
             'Agosto': 0.0, 'Septiembre': 0.0, 'Octubre': 0.0, 'Noviembre': 0.0
         }
 
-    st.sidebar.markdown("---")
-    if st.sidebar.button("💾 Guardar TODO en Google Drive", type="primary"):
-        with st.spinner("Guardando en la nube... ⏳"):
-            if guardar_datos_en_nube():
-                st.sidebar.success("✅ ¡Guardado con éxito!")
-                time.sleep(2)
-                st.rerun()
-
     # --- NAVEGACIÓN ---
     periodo_actual = st.radio("Selecciona el periodo a gestionar:", ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], horizontal=True)
     st.markdown("---")
@@ -112,33 +104,45 @@ if check_password():
     # --- 1. CONFIGURACIÓN DE INGRESOS ---
     if periodo_actual == 'Décimo Tercero':
         with st.expander("📅 Calculadora Décimo Tercer Sueldo (Ingresa tus salarios)", expanded=True):
-            st.write("Ingresa todo lo percibido desde el 1 de dic. hasta el 30 de nov:")
-            cols = st.columns(4)
-            meses_lista = list(st.session_state.decimo_tercero_meses.keys())
-            
-            for i, mes in enumerate(meses_lista):
-                with cols[i % 4]:
-                    val_actual = st.session_state.decimo_tercero_meses[mes]
-                    # Ceros automáticos para los meses
-                    val_ingresado_raw = st.number_input(f"{mes}", value=val_actual if val_actual > 0 else None, placeholder="0", step=50.0)
-                    st.session_state.decimo_tercero_meses[mes] = val_ingresado_raw if val_ingresado_raw is not None else 0.0
-            
-            # Cálculo
-            total_percibido = sum(st.session_state.decimo_tercero_meses.values())
-            decimo_calculado = total_percibido / 12 if total_percibido > 0 else 0.0
-            
-            # Actualizamos el ingreso de este periodo
-            st.session_state.ingresos['Décimo Tercero'] = decimo_calculado
-            
-            st.info(f"**Total Percibido:** ${total_percibido:.2f} | **Décimo Tercero Calculado:** ${decimo_calculado:.2f}")
+            with st.form("form_calculadora_decimo"):
+                st.write("Ingresa todo lo percibido desde el 1 de dic. hasta el 30 de nov:")
+                cols = st.columns(4)
+                meses_lista = list(st.session_state.decimo_tercero_meses.keys())
+                
+                for i, mes in enumerate(meses_lista):
+                    with cols[i % 4]:
+                        val_actual = st.session_state.decimo_tercero_meses[mes]
+                        val_ingresado_raw = st.number_input(f"{mes}", value=val_actual if val_actual > 0 else None, placeholder="0", step=50.0)
+                        st.session_state.decimo_tercero_meses[mes] = val_ingresado_raw if val_ingresado_raw is not None else 0.0
+                
+                # Visualización del cálculo
+                total_percibido = sum(st.session_state.decimo_tercero_meses.values())
+                decimo_calculado = total_percibido / 12 if total_percibido > 0 else 0.0
+                st.info(f"**Total Percibido:** ${total_percibido:.2f} | **Décimo Tercero Calculado:** ${decimo_calculado:.2f}")
+
+                # Botón de autoguardado para ingresos
+                if st.form_submit_button("💾 Actualizar y Guardar Meses"):
+                    st.session_state.ingresos['Décimo Tercero'] = decimo_calculado
+                    with st.spinner("Guardando en Google Drive... ⏳"):
+                        guardar_datos_en_nube()
+                    st.success("✅ Guardado automático exitoso.")
+                    time.sleep(1.5)
+                    st.rerun()
 
     else:
-        col_ing, _ = st.columns([1, 2])
-        with col_ing:
-            val_ing = st.session_state.ingresos[periodo_actual]
-            # Cero automático para el ingreso inicial
-            nuevo_ingreso_raw = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0", step=50.0)
-            st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
+        with st.form(f"form_ingreso_basico_{periodo_actual}"):
+            col_ing, _ = st.columns([1, 2])
+            with col_ing:
+                val_ing = st.session_state.ingresos[periodo_actual]
+                nuevo_ingreso_raw = st.number_input("Total Recibido (Ingreso Inicial):", min_value=0.0, value=val_ing if val_ing > 0 else None, placeholder="0", step=50.0)
+            
+            if st.form_submit_button("💾 Actualizar y Guardar Ingreso"):
+                st.session_state.ingresos[periodo_actual] = nuevo_ingreso_raw if nuevo_ingreso_raw is not None else 0.0
+                with st.spinner("Guardando en Google Drive... ⏳"):
+                    guardar_datos_en_nube()
+                st.success("✅ Guardado automático exitoso.")
+                time.sleep(1.5)
+                st.rerun()
 
     st.markdown("### 📝 Programación de Gastos Fijos vs Pagos Reales")
 
@@ -149,16 +153,18 @@ if check_password():
             with c1:
                 nombre_gasto = st.text_input("Nombre del Gasto Fijo")
             with c2:
-                # Cero automático para el nuevo gasto programado
                 monto_prog_raw = st.number_input("Monto Programado ($)", min_value=0.0, value=None, placeholder="0", step=10.0)
                 monto_prog = monto_prog_raw if monto_prog_raw is not None else 0.0
             
-            if st.form_submit_button("Guardar Gasto Localmente"):
+            if st.form_submit_button("💾 Guardar Gasto Nuevo"):
                 if nombre_gasto != "":
                     nuevo_id = f"G-{len(st.session_state.gastos_fijos[periodo_actual]) + 1}"
                     nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_prog}])
                     st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
-                    st.success("Gasto añadido.")
+                    with st.spinner("Guardando gasto en la nube... ⏳"):
+                        guardar_datos_en_nube()
+                    st.success("✅ Gasto añadido y guardado.")
+                    time.sleep(1.5)
                     st.rerun()
 
     # --- 3. VISTA PARALELA ---
@@ -176,23 +182,22 @@ if check_password():
                     c_f, c_m = st.columns(2)
                     with c_f:
                         fecha_pago = st.date_input("Fecha", date.today())
-                        # Cero automático para la comisión
                         comision_raw = st.number_input("Comisión ($)", min_value=0.0, value=None, placeholder="0", step=1.0)
                         comision = comision_raw if comision_raw is not None else 0.0
                     with c_m:
-                        # Para el pago, asume por defecto lo programado. Si estaba en cero, muestra el placeholder.
                         val_pago_defecto = row['Monto_Programado'] if row['Monto_Programado'] > 0 else None
                         monto_pago_raw = st.number_input("Monto a Pagar ($)", min_value=0.0, value=val_pago_defecto, placeholder="0", step=10.0)
                         monto_pago = monto_pago_raw if monto_pago_raw is not None else 0.0
-                        
-                        # Cero automático para el IVA
                         iva_raw = st.number_input("IVA Comisión ($)", min_value=0.0, value=None, placeholder="0", step=0.1)
                         iva_comision = iva_raw if iva_raw is not None else 0.0
                     
-                    if st.form_submit_button("✅ Confirmar Pago"):
+                    if st.form_submit_button("✅ Confirmar Pago y Guardar"):
                         nuevo_pago = pd.DataFrame([{'ID_Gasto': row['ID'], 'Fecha': str(fecha_pago), 'Monto_Pagado': monto_pago, 'Comision': comision, 'IVA_Comision': iva_comision}])
                         st.session_state.pagos_reales[periodo_actual] = pd.concat([st.session_state.pagos_reales[periodo_actual], nuevo_pago], ignore_index=True)
-                        st.success("Pago registrado.")
+                        with st.spinner("Registrando pago en la nube... ⏳"):
+                            guardar_datos_en_nube()
+                        st.success("✅ Pago registrado y guardado automático.")
+                        time.sleep(1.5)
                         st.rerun()
             with col2:
                 st.write("**Historial de Pagos Reales**")
