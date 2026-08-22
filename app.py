@@ -12,6 +12,8 @@ def check_password():
         if st.session_state["username"] in st.secrets["passwords"] and \
            st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
             st.session_state["password_correct"] = True
+            # Guardamos el usuario de forma permanente antes de que se borre el widget
+            st.session_state["usuario_actual"] = st.session_state["username"] 
             del st.session_state["password"]  # Elimina la contraseña por seguridad
         else:
             st.session_state["password_correct"] = False
@@ -33,7 +35,8 @@ def check_password():
 
 # --- EJECUCIÓN DE LA APLICACIÓN ---
 if check_password():
-    st.sidebar.success(f"Sesión iniciada como: {st.session_state['username']}")
+    # Usamos la variable persistente en lugar del widget temporal
+    st.sidebar.success(f"Sesión iniciada como: {st.session_state['usuario_actual']}")
     
     st.title("📊 Control de Gastos y Pagos Reales")
     st.info('Este es el sistema de control basado en tu archivo "PROGRAMACION".')
