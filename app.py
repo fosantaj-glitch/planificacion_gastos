@@ -44,24 +44,24 @@ st.markdown("""
         font-size: 13px !important;
         font-weight: 700 !important;
         color: #D97706 !important; /* Acento cálido / dorado */
-        letter-spacing: 3px !important;
+        letter-spacing: 4px !important;
         text-transform: uppercase;
-        margin-top: 5px !important;
-        margin-bottom: 25px !important;
+        margin-top: 6px !important;
+        margin-bottom: 0 !important;
     }
 
     /* TARJETAS DE MÉTRICAS / KPIS */
     .kpi-card {
         background: #FFFFFF;
-        border-radius: 12px;
-        padding: 16px 20px;
+        border-radius: 14px;
+        padding: 18px 22px;
         border: 1px solid #E2E8F0;
-        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.02);
+        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.03);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
     .kpi-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.05);
+        box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.06);
     }
     .kpi-titulo {
         font-size: 11px;
@@ -71,10 +71,16 @@ st.markdown("""
         letter-spacing: 1px;
     }
     .kpi-valor {
-        font-size: 22px;
+        font-size: 26px;
         font-weight: 800;
         color: #0F172A;
         margin-top: 4px;
+    }
+    .kpi-subtexto {
+        font-size: 11px;
+        font-weight: 600;
+        color: #94A3B8;
+        margin-top: 6px;
     }
 
     /* FORMULARIOS Y CONTENEDORES FLOTANTES */
@@ -121,11 +127,26 @@ st.markdown("""
     /* ETIQUETAS DE ESTADO (PASTILLAS) */
     .estado-pendiente { color: #DC2626; font-weight: 700; background-color: #FEE2E2; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block;}
     .estado-pagado { color: #16A34A; font-weight: 700; background-color: #DCFCE7; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block;}
+    .estado-extra { color: #7C3AED; font-weight: 700; background-color: #EDE9FE; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block;}
     </style>
 """, unsafe_allow_html=True)
 
+# --- FUNCIÓN VISUAL: CABECERA CON BOTÓN DE SALIDA ---
+def mostrar_cabecera(mostrar_salir=False):
+    col_info, col_accion = st.columns([7, 3])
+    with col_info:
+        st.markdown('<p class="titulo-principal">📊 PANEL FINANCIERO</p>', unsafe_allow_html=True)
+        st.markdown('<p class="subtitulo-marca">Gestión Estratégica de Presupuesto y Gastos Reales</p>', unsafe_allow_html=True)
+    with col_accion:
+        if mostrar_salir:
+            st.write("<br>", unsafe_allow_html=True)
+            if st.button("🚪 Cerrar Sesión", use_container_width=True):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
+
 # --- FUNCIONES BASE DE DATOS (NUBE) BLINDADAS ---
-URL_WEB_APP = "https://script.google.com/macros/s/AKfycbx9lOCIm2IZNuDeLl8xmBL8QSR5sekd12Ngx3cELrNvYYefhuVJN6VhgBdezNcfiijo/exec"
+URL_WEB_APP = "Pega_tu_URL_de_Apps_Script_AQUI_terminada_en_/exec"
 
 def cargar_datos_desde_nube():
     try:
@@ -136,10 +157,8 @@ def cargar_datos_desde_nube():
                 return pd.DataFrame(data[1:], columns=data[0])
             elif len(data) == 1:
                 return pd.DataFrame(columns=data[0])
-        else:
-            st.error(f"⚠️ Error al descargar desde Google: {res.status_code}")
     except Exception as e:
-        st.error(f"⚠️ Error de conexión con Google Sheets: {e}")
+        pass
     return pd.DataFrame()
 
 def estructurar_datos_para_guardar():
@@ -154,6 +173,9 @@ def estructurar_datos_para_guardar():
     for periodo, df_pagos in st.session_state.pagos_reales.items():
         for _, row in df_pagos.iterrows():
             filas.append({'Periodo': periodo, 'Categoria': 'Pago Real', 'ID_Relacionado': row['ID_Gasto'], 'Descripcion': 'Pago ejecutado', 'Monto': row['Monto_Pagado'], 'Fecha': row['Fecha'], 'Comision': row['Comision'], 'IVA': row['IVA_Comision'], 'Estado': 'Pagado'})
+    for periodo, df_extras in st.session_state.gastos_extras.items():
+        for _, row in df_extras.iterrows():
+            filas.append({'Periodo': periodo, 'Categoria': 'Gasto Extra', 'ID_Relacionado': row['ID_Extra'], 'Descripcion': row['Descripcion'], 'Monto': row['Monto_Pagado'], 'Fecha': row['Fecha'], 'Comision': row['Comision'], 'IVA': row['IVA_Comision'], 'Estado': 'Pagado'})
     return pd.DataFrame(filas)
 
 def guardar_datos_en_nube():
@@ -165,31 +187,12 @@ def guardar_datos_en_nube():
             data_list.append(list(row))
         payload = {"action": "overwrite", "data": data_list}
         res = requests.post(URL_WEB_APP, json=payload, allow_redirects=True)
-        
         if res.status_code not in [200, 201]:
             st.error(f"⚠️ Google rechazó los datos. Error: {res.status_code}")
             return False
         return True
     except Exception as e:
-        st.error(f"⚠️ Ocurrió un error al intentar enviar los datos: {e}")
         return False
-
-# --- FUNCIÓN VISUAL: CABECERA CON BOTÓN DE SALIDA ---
-def mostrar_cabecera(mostrar_salir=False):
-    col_info, col_accion = st.columns([7, 3])
-    
-    with col_info:
-        st.markdown('<p class="titulo-principal">📊 PANEL FINANCIERO</p>', unsafe_allow_html=True)
-        st.markdown('<p class="subtitulo-marca">Gestión Estratégica de Presupuesto y Gastos</p>', unsafe_allow_html=True)
-        
-    with col_accion:
-        if mostrar_salir:
-            st.write("<br>", unsafe_allow_html=True)
-            if st.button("🚪 Cerrar Sesión", use_container_width=True):
-                # Borrar credenciales y reiniciar la aplicación
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
 
 # --- SISTEMA DE LOGIN DE ALTO IMPACTO ---
 def check_password():
@@ -222,10 +225,8 @@ def check_password():
 # --- EJECUCIÓN APP ---
 if check_password():
     
-    # CABECERA EMPRESARIAL CON BOTÓN DE SALIDA
     mostrar_cabecera(mostrar_salir=True)
     
-    # PROTECCIÓN CONTRA ERRORES DE CACHÉ
     if 'mes_operativo' not in st.session_state:
         st.session_state.mes_operativo = "Agosto"
     if 'anio_operativo' not in st.session_state:
@@ -243,7 +244,11 @@ if check_password():
         st.session_state.gastos_fijos = {'Mes Regular': estructura_base.copy(), 'Décimo Tercero': estructura_base.copy(), 'Décimo Cuarto': estructura_base.copy()}
         
         estructura_pagos = pd.DataFrame(columns=['ID_Gasto', 'Fecha', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
-        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy() if 'structure_pagos' in locals() else estructura_pagos.copy()}
+        st.session_state.pagos_reales = {'Mes Regular': estructura_pagos.copy(), 'Décimo Tercero': estructura_pagos.copy(), 'Décimo Cuarto': estructura_pagos.copy()}
+        
+        # NUEVA BASE DE DATOS PARA EXTRAS
+        estructura_extras = pd.DataFrame(columns=['ID_Extra', 'Fecha', 'Descripcion', 'Monto_Pagado', 'Comision', 'IVA_Comision'])
+        st.session_state.gastos_extras = {'Mes Regular': estructura_extras.copy(), 'Décimo Tercero': estructura_extras.copy(), 'Décimo Cuarto': estructura_extras.copy()}
 
         with st.spinner("Descargando base de datos segura... ⏳"):
             df_cloud = cargar_datos_desde_nube()
@@ -286,17 +291,31 @@ if check_password():
                             'IVA_Comision': pd.to_numeric(p_df['IVA'], errors='coerce').fillna(0.0)
                         })
                         st.session_state.pagos_reales[periodo] = df_to_save
+                        
+                # Recuperar Gastos Extras
+                extras_df = df_cloud[df_cloud['Categoria'] == 'Gasto Extra']
+                for periodo in ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto']:
+                    p_df = extras_df[extras_df['Periodo'] == periodo]
+                    if not p_df.empty:
+                        df_to_save = pd.DataFrame({
+                            'ID_Extra': p_df['ID_Relacionado'].values,
+                            'Fecha': p_df['Fecha'].values,
+                            'Descripcion': p_df['Descripcion'].values,
+                            'Monto_Pagado': pd.to_numeric(p_df['Monto'], errors='coerce').fillna(0.0),
+                            'Comision': pd.to_numeric(p_df['Comision'], errors='coerce').fillna(0.0),
+                            'IVA_Comision': pd.to_numeric(p_df['IVA'], errors='coerce').fillna(0.0)
+                        })
+                        st.session_state.gastos_extras[periodo] = df_to_save
 
         st.session_state.datos_cargados = True
 
     # NAVEGACIÓN COMPACTA
     periodo_actual = st.radio("SELECCIONA EL PERIODO DE GESTIÓN:", ['Mes Regular', 'Décimo Tercero', 'Décimo Cuarto'], horizontal=True)
-
-    # ====================================================
-    # PARÁMETROS SUPERIORES COMPACTOS (UNIFICADOS EN UNA SOLA FILA)
-    # ====================================================
     st.write("<br>", unsafe_allow_html=True)
     
+    # ====================================================
+    # PARÁMETROS SUPERIORES COMPACTOS
+    # ====================================================
     if periodo_actual == 'Mes Regular':
         with st.form("form_parametros_mes"):
             st.markdown("<h5 style='color:#0F172A; font-weight:700;'>⚙️ Parámetros del Mes</h5>", unsafe_allow_html=True)
@@ -323,15 +342,13 @@ if check_password():
     elif periodo_actual == 'Décimo Tercero':
         with st.form("form_calculadora_decimo"):
             st.markdown("<h5 style='color:#0F172A; font-weight:700;'>📅 Calculadora de Remuneraciones (Dic - Nov)</h5>", unsafe_allow_html=True)
-            cols = st.columns(6) # Más compacto: 6 meses por fila
+            cols = st.columns(6) 
             meses_lista = list(st.session_state.decimo_tercero_meses.keys())
-            
             for i, mes in enumerate(meses_lista):
                 with cols[i % 6]:
                     val_actual = st.session_state.decimo_tercero_meses[mes]
                     val_ingresado_raw = st.number_input(f"{mes[:3]}.", value=val_actual if val_actual > 0 else None, placeholder="0", step=50.0)
                     st.session_state.decimo_tercero_meses[mes] = val_ingresado_raw if val_ingresado_raw is not None else 0.0
-            
             total_percibido = sum(st.session_state.decimo_tercero_meses.values())
             decimo_calculado = total_percibido / 12 if total_percibido > 0 else 0.0
             
@@ -360,13 +377,13 @@ if check_password():
                         guardar_datos_en_nube()
                     st.rerun()
 
+    # ====================================================
+    # GASTOS FIJOS (PROGRAMADOS)
+    # ====================================================
     st.write("<hr style='border: none; height: 1px; background: #E2E8F0; margin: 20px 0;'>", unsafe_allow_html=True)
-    st.markdown("<h4 style='color: #0F172A; font-weight: 700;'>📝 LISTADO DE GASTOS Y PAGOS</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #0F172A; font-weight: 700;'>📝 LISTADO DE GASTOS FIJOS</h4>", unsafe_allow_html=True)
 
-    # ====================================================
-    # FORMULARIO COMPACTO DE NUEVO GASTO
-    # ====================================================
-    with st.expander("➕ Ingresar Nueva Programación Fija", expanded=False):
+    with st.expander("➕ Programar Nuevo Gasto Fijo", expanded=False):
         with st.form(f"form_nuevo_gasto_{periodo_actual}", clear_on_submit=True):
             c1, c2, c3, c4, c_btn = st.columns([2.5, 1.5, 1.5, 1.5, 1.5])
             with c1: nombre_gasto = st.text_input("Descripción")
@@ -381,7 +398,6 @@ if check_password():
                         monto_p = monto_prog_raw if monto_prog_raw is not None else 0.0
                         comis_p = comision_prog_raw if comision_prog_raw is not None else 0.0
                         iva_p = iva_prog_raw if iva_prog_raw is not None else 0.0
-                        
                         nueva_fila = pd.DataFrame([{'ID': nuevo_id, 'Gasto': nombre_gasto, 'Monto_Programado': monto_p, 'Comision_Prog': comis_p, 'IVA_Prog': iva_p, 'Estado': 'Pendiente'}])
                         st.session_state.gastos_fijos[periodo_actual] = pd.concat([st.session_state.gastos_fijos[periodo_actual], nueva_fila], ignore_index=True)
                         with st.spinner("Sincronizando... ⏳"):
@@ -392,23 +408,15 @@ if check_password():
     df_pagos = st.session_state.pagos_reales[periodo_actual]
 
     if not df_prog.empty:
-        # ==========================================
-        # DISEÑO DE LISTA EN UNA SOLA FILA
-        # ==========================================
         for index, row in df_prog.iterrows():
             with st.container(border=True):
                 c1, c2, c3, c4 = st.columns([4.5, 2, 1.5, 1.5])
-                
                 with c1:
                     st.markdown(f"**🔹 {row['Gasto']}**<br><span style='color:#64748B; font-size:12px;'>Prog: **${float(row['Monto_Programado']):.2f}** | Com: **${float(row['Comision_Prog']):.2f}** | IVA: **${float(row['IVA_Prog']):.2f}**</span>", unsafe_allow_html=True)
-                
                 with c2:
                     st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-                    if row['Estado'] == 'Pagado':
-                        st.markdown('<span class="estado-pagado">✅ PAGADO</span>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<span class="estado-pendiente">🔴 PENDIENTE</span>', unsafe_allow_html=True)
-                        
+                    if row['Estado'] == 'Pagado': st.markdown('<span class="estado-pagado">✅ PAGADO</span>', unsafe_allow_html=True)
+                    else: st.markdown('<span class="estado-pendiente">🔴 PENDIENTE</span>', unsafe_allow_html=True)
                 with c3:
                     st.markdown("<div style='margin-top: 3px;'></div>", unsafe_allow_html=True)
                     if row['Estado'] == 'Pendiente':
@@ -422,7 +430,6 @@ if check_password():
                                 comision_pago = st.number_input("Comisión Real ($)", min_value=0.0, value=val_comis, placeholder="0", step=1.0)
                                 val_iva = float(row['IVA_Prog']) if float(row['IVA_Prog']) > 0 else None
                                 iva_pago = st.number_input("IVA Real ($)", min_value=0.0, value=val_iva, placeholder="0", step=0.1)
-                                    
                                 if st.form_submit_button("✅ Confirmar Pago", type="primary"):
                                     monto_f = monto_pago if monto_pago is not None else 0.0
                                     comis_f = comision_pago if comision_pago is not None else 0.0
@@ -432,7 +439,6 @@ if check_password():
                                     st.session_state.gastos_fijos[periodo_actual].at[index, 'Estado'] = 'Pagado'
                                     with st.spinner("Registrando... ⏳"):
                                         if guardar_datos_en_nube(): st.rerun()
-                
                 with c4:
                     st.markdown("<div style='margin-top: 3px;'></div>", unsafe_allow_html=True)
                     with st.popover("⚙️ Editar", use_container_width=True):
@@ -441,7 +447,6 @@ if check_password():
                             e_monto = st.number_input("Monto ($)", min_value=0.0, value=float(row['Monto_Programado']), step=10.0)
                             e_com = st.number_input("Comisión ($)", min_value=0.0, value=float(row['Comision_Prog']), step=1.0)
                             e_iva = st.number_input("IVA ($)", min_value=0.0, value=float(row['IVA_Prog']), step=0.1)
-                            
                             if st.form_submit_button("💾 Actualizar Valores"):
                                 st.session_state.gastos_fijos[periodo_actual].at[index, 'Gasto'] = e_nom
                                 st.session_state.gastos_fijos[periodo_actual].at[index, 'Monto_Programado'] = e_monto
@@ -456,22 +461,81 @@ if check_password():
                                 guardar_datos_en_nube()
                             st.rerun()
     else:
-        st.info("Sin registros. Empieza a programar tus gastos arriba.")
+        st.info("Sin registros. Empieza a programar tus gastos fijos.")
 
     # ====================================================
-    # DASHBOARD INFERIOR: RESUMEN DE SALDOS
+    # GASTOS EXTRAS (NO PROGRAMADOS)
     # ====================================================
     st.write("<br>", unsafe_allow_html=True)
-    st.markdown("<h4 style='color: #0F172A; font-weight: 700;'>📈 KPIS DE SALDOS Y FLUJO</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #0F172A; font-weight: 700;'>💸 GASTOS EXTRAS (IMPREVISTOS / REALES)</h4>", unsafe_allow_html=True)
     
+    with st.expander("➕ Registrar Gasto Extra", expanded=False):
+        with st.form(f"form_nuevo_extra_{periodo_actual}", clear_on_submit=True):
+            st.info("Registra aquí los desembolsos que no estaban planificados.")
+            c1, c2, c3, c4, c5 = st.columns([1.5, 2, 1.5, 1, 1])
+            with c1: fecha_extra = st.date_input("Fecha", date.today())
+            with c2: desc_extra = st.text_input("Descripción del Gasto Extra")
+            with c3: monto_extra = st.number_input("Monto Real ($)", min_value=0.0, value=None, placeholder="0", step=10.0)
+            with c4: comis_extra = st.number_input("Comisión ($)", min_value=0.0, value=None, placeholder="0", step=1.0)
+            with c5: iva_extra = st.number_input("IVA ($)", min_value=0.0, value=None, placeholder="0", step=0.1)
+            
+            if st.form_submit_button("✅ Registrar Gasto Imprevisto", type="primary", use_container_width=True):
+                if desc_extra != "":
+                    nuevo_id_ext = f"EXT-{len(st.session_state.gastos_extras[periodo_actual]) + 1}_{int(time.time())}"
+                    m_ext = monto_extra if monto_extra is not None else 0.0
+                    c_ext = comis_extra if comis_extra is not None else 0.0
+                    i_ext = iva_extra if iva_extra is not None else 0.0
+                    nueva_fila_ext = pd.DataFrame([{'ID_Extra': nuevo_id_ext, 'Fecha': str(fecha_extra), 'Descripcion': desc_extra, 'Monto_Pagado': m_ext, 'Comision': c_ext, 'IVA_Comision': i_ext}])
+                    st.session_state.gastos_extras[periodo_actual] = pd.concat([st.session_state.gastos_extras[periodo_actual], nueva_fila_ext], ignore_index=True)
+                    with st.spinner("Sincronizando con la nube... ⏳"):
+                        guardar_datos_en_nube()
+                    st.rerun()
+
+    df_extras = st.session_state.gastos_extras[periodo_actual]
+    if not df_extras.empty:
+        for index, row in df_extras.iterrows():
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([6.5, 2, 1.5])
+                with c1:
+                    st.markdown(f"**🔸 {row['Descripcion']}**<br><span style='color:#64748B; font-size:12px;'>Fecha: **{row['Fecha']}** | Pagado: **${float(row['Monto_Pagado']):.2f}** | Com: **${float(row['Comision']):.2f}** | IVA: **${float(row['IVA_Comision']):.2f}**</span>", unsafe_allow_html=True)
+                with c2:
+                    st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+                    st.markdown('<span class="estado-extra">🟣 EXTRA</span>', unsafe_allow_html=True)
+                with c3:
+                    st.markdown("<div style='margin-top: 3px;'></div>", unsafe_allow_html=True)
+                    with st.popover("⚙️ Ajustes", use_container_width=True):
+                        st.write("Si cometiste un error, puedes borrar este registro y volver a crearlo.")
+                        if st.button("🗑️ Borrar", key=f"del_ext_{row['ID_Extra']}_{periodo_actual}", type="secondary", use_container_width=True):
+                            st.session_state.gastos_extras[periodo_actual] = st.session_state.gastos_extras[periodo_actual][st.session_state.gastos_extras[periodo_actual]['ID_Extra'] != row['ID_Extra']].reset_index(drop=True)
+                            with st.spinner("Borrando... ⏳"):
+                                guardar_datos_en_nube()
+                            st.rerun()
+    else:
+        st.info("Sin gastos extras registrados.")
+
+    # ====================================================
+    # DASHBOARD INFERIOR: RESUMEN DE SALDOS REALES
+    # ====================================================
+    st.write("<br>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #0F172A; font-weight: 700;'>📈 KPIS DE SALDOS Y FLUJO EFECTIVO</h4>", unsafe_allow_html=True)
+    
+    # Matemáticas de Fijos
     total_programado = df_prog['Monto_Programado'].astype(float).sum() + df_prog['Comision_Prog'].astype(float).sum() + df_prog['IVA_Prog'].astype(float).sum()
-    total_pagos_puros = df_pagos['Monto_Pagado'].astype(float).sum()
-    total_comisiones = df_pagos['Comision'].astype(float).sum() + df_pagos['IVA_Comision'].astype(float).sum()
-    total_salida_real = total_pagos_puros + total_comisiones
+    total_fijos_pagados = df_pagos['Monto_Pagado'].astype(float).sum() + df_pagos['Comision'].astype(float).sum() + df_pagos['IVA_Comision'].astype(float).sum()
+    
+    # Matemáticas de Extras
+    total_extras_pagados = df_extras['Monto_Pagado'].astype(float).sum() + df_extras['Comision'].astype(float).sum() + df_extras['IVA_Comision'].astype(float).sum()
+    
+    # Gran Total Real
+    total_salida_real = total_fijos_pagados + total_extras_pagados
     saldo_restante = float(st.session_state.ingresos[periodo_actual]) - total_salida_real
     
     m1, m2, m3, m4 = st.columns(4)
-    with m1: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">PRESUPUESTO BASE</div><div class="kpi-valor" style="color:#16A34A;">${float(st.session_state.ingresos[periodo_actual]):,.2f}</div></div>', unsafe_allow_html=True)
-    with m2: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">TOTAL PROGRAMADO</div><div class="kpi-valor">${total_programado:,.2f}</div></div>', unsafe_allow_html=True)
-    with m3: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">GASTO REAL EJECUTADO</div><div class="kpi-valor" style="color:#DC2626;">${total_salida_real:,.2f}</div></div>', unsafe_allow_html=True)
-    with m4: st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">SALDO RESTANTE</div><div class="kpi-valor" style="color:{"#0F172A" if saldo_restante >= 0 else "#DC2626"};">${saldo_restante:,.2f}</div></div>', unsafe_allow_html=True)
+    with m1: 
+        st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">PRESUPUESTO BASE</div><div class="kpi-valor" style="color:#16A34A;">${float(st.session_state.ingresos[periodo_actual]):,.2f}</div><div class="kpi-subtexto">Ingreso total del periodo</div></div>', unsafe_allow_html=True)
+    with m2: 
+        st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">PROGRAMADO (FIJOS)</div><div class="kpi-valor">${total_programado:,.2f}</div><div class="kpi-subtexto">Lo que planeabas gastar</div></div>', unsafe_allow_html=True)
+    with m3: 
+        st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">GASTO REAL EJECUTADO</div><div class="kpi-valor" style="color:#DC2626;">${total_salida_real:,.2f}</div><div class="kpi-subtexto">Fijos: ${total_fijos_pagados:,.2f} | Extras: ${total_extras_pagados:,.2f}</div></div>', unsafe_allow_html=True)
+    with m4: 
+        st.markdown(f'<div class="kpi-card"><div class="kpi-titulo">SALDO EFECTIVO REAL</div><div class="kpi-valor" style="color:{"#0F172A" if saldo_restante >= 0 else "#DC2626"};">${saldo_restante:,.2f}</div><div class="kpi-subtexto">Efectivo final en bolsillo</div></div>', unsafe_allow_html=True)
