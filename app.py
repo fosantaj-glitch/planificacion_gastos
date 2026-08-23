@@ -146,7 +146,7 @@ def mostrar_cabecera(mostrar_salir=False):
                 st.rerun()
 
 # --- FUNCIONES BASE DE DATOS (NUBE) BLINDADAS ---
-URL_WEB_APP = "Pega_tu_URL_de_Apps_Script_AQUI_terminada_en_/exec"
+URL_WEB_APP = "https://script.google.com/macros/s/AKfycbx9lOCIm2IZNuDeLl8xmBL8QSR5sekd12Ngx3cELrNvYYefhuVJN6VhgBdezNcfiijo/exec"
 
 def cargar_datos_desde_nube():
     try:
